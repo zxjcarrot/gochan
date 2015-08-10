@@ -13,7 +13,7 @@ without any wrapping.
 When done with gochan, simply close the writing channel through `CloseWriteChan()`
 method or by closing  the `io.ReadWriter` interface.
 Closing the writing channel won't affect the reading channel,
-but closing the `io.ReadWriter` interface will causes both reading and writing channels to be closed.  
+but closing the `io.ReadWriter` interface causes both reading and writing channels to be closed.  
 Note:
 1. If you closed `io.ReadWriter` interface and the writing channel
 still has buffered data at the point, these data will be lost. To prevent this, use `CloseWriteChan()` method. `CloseWriteChan()` will block until the writing channel has finished writing buffered data or encountered errors. After then, you can safely close the `io.ReadWriter` interface.
