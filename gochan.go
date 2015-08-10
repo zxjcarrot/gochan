@@ -31,6 +31,7 @@ package gochan
 import (
 	"io"
 	"log"
+	"os"
 	"sync"
 	"sync/atomic"
 )
@@ -54,16 +55,11 @@ type goChan struct {
 }
 
 var (
-	mtx sync.Mutex
-	rcm map[<-chan ChanData]*goChan
-	wcm map[chan<- []byte]*goChan
+	mtx    sync.Mutex
+	rcm    = make(map[<-chan ChanData]*goChan)
+	wcm    = make(map[chan<- []byte]*goChan)
+	logger = log.New(os.Stderr, "", log.Flags()|log.Lmicroseconds)
 )
-
-func init() {
-	log.SetFlags(log.Flags() | log.Lmicroseconds)
-	rcm = make(map[<-chan ChanData]*goChan)
-	wcm = make(map[chan<- []byte]*goChan)
-}
 
 func readChan(gc *goChan) {
 	defer func() {
@@ -72,15 +68,12 @@ func readChan(gc *goChan) {
 	defer CloseReadChan(gc.rc)
 
 	for {
-		readsize := atomic.LoadUint32(&gc.readSize)
-		b := make([]byte, readsize)
+		b := make([]byte, gc.readSize)
 		n, err := gc.r.Read(b)
 		b = b[0:n]
+		gc.rc <- ChanData{b, err}
 		if err == io.EOF || err == io.ErrClosedPipe {
-			gc.rc <- ChanData{b, err}
 			break
-		} else {
-			gc.rc <- ChanData{b, err}
 		}
 	}
 }
@@ -95,7 +88,7 @@ func writeChan(gc *goChan) {
 		}
 		_, err := gc.w.Write(s)
 		if err != nil {
-			log.Printf("write error %v\n", err)
+			logger.Printf("write error %v\n", err)
 			gc.done <- empty{} // work is done
 			break
 		}

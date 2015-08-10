@@ -115,6 +115,9 @@ func TestGochanPipe(t *testing.T) {
 	}
 }
 
+func pipe() {
+}
+
 func TestGochanPipeError(t *testing.T) {
 	rf, wf, err := os.Pipe()
 	if err != nil {
