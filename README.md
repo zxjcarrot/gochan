@@ -57,7 +57,7 @@ for i := 0; i < 10; i = i + 1 {
 	wc <- []byte("eat my shorts" + strconv.Itoa(i) + "!!!\n")
 }
 // CloseWriteChan will blocks until the buffered data in the channel is written into the connection.
-CloseWriteChan(wc)
+gochan.CloseWriteChan(wc)
 f.Close()
 
 log.Println(want)
@@ -84,15 +84,15 @@ rf, wf, err := os.Pipe()
 if err != nil {
 	t.Fatal("failed to create pipe:", err)
 }
-rc := NewReadonlyChan(rf, 50, 4096)
-wc := NewWriteonlyChan(wf, 50)
+rc := gochan.NewReadonlyChan(rf, 50, 4096)
+wc := gochan.NewWriteonlyChan(wf, 50)
 done := make(chan bool)
 
 go func() {
 	for i := 0; i < 10; i = i + 1 {
 		wc <- []byte("eat my shorts" + strconv.Itoa(i) + "!!!\n")
 	}
-	CloseWriteChan(wc)
+	gochan.CloseWriteChan(wc)
 	wf.Close()
 	done <- true
 }()
