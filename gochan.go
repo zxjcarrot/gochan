@@ -36,7 +36,7 @@ import (
 	"sync/atomic"
 )
 
-// ChanData contains data and error(if any) during transmission
+// ChanData contains data and error(if any) for transmission
 type ChanData struct {
 	Data []byte
 	Err  error
@@ -95,17 +95,15 @@ func writeChan(gc *goChan) {
 	}
 }
 
-// NewChan creates two channels for reading and writing.
-// The reading channel is typed by ChanData struct, while the writing channel is typed by []byte.
-// @rw: anything that implements io.ReadWriter interface.
-// @rcBufsize: the buffer size of the reading channel, a unbuffered channel will be created if 0 provided.
-// @wcBufsize: the buffer size of the writing channel, a unbuffered channel will be created if 0 provided.
-// @readSize: the read size for io.Read() method, it might return less bytes.
+// NewChan creates two separate channels with buffer size rcBufsize and wcBufsize for reading/writing from/to rw.
+// Unbuffered channels will be created if buffer size 0 provided.
+// The readSize parameter indicates the number of bytes a io.Reader.Read() operation will perform.
+// The reading channel returned is typed by ChanData struct, while the writing one is typed by []byte.
 // Every read operation on the channel will return a ChanData containing data and error if any,
 // the actual bytes read can be obtained from len(ChanData.Data).
 // Every write operation should provided a ChanData containing a slice of bytes and
 // the Err field in the ChanData struct will be ignored.
-func NewChan(rw io.ReadWriter, rcBufsize uint, wcBufsize, readSize uint32) (<-chan ChanData, chan<- []byte) {
+func NewChan(rw io.ReadWriter, rcBufsize uint, wcBufsize uint, readSize uint32) (<-chan ChanData, chan<- []byte) {
 	mtx.Lock()
 	defer mtx.Unlock()
 	var gc = goChan{make(chan ChanData, rcBufsize), make(chan []byte, wcBufsize), make(chan empty, 1), rw, rw, readSize}
@@ -138,10 +136,9 @@ func NewWriteonlyChan(w io.Writer, wcBufsize uint) chan<- []byte {
 	return gc.wc
 }
 
-// CloseWriteChan closes the writing channel.
+// CloseWriteChan closes the writing channel wc.
 // it blocks until the writing channel finished writing its
 // buffered data or encountered errors.
-// @wc: the writing side channel
 func CloseWriteChan(wc chan<- []byte) error {
 	mtx.Lock()
 	defer mtx.Unlock()
@@ -154,8 +151,7 @@ func CloseWriteChan(wc chan<- []byte) error {
 	return nil
 }
 
-// CloseReadChan closes the reading channel.
-// @wc: the reading side channel
+// CloseReadChan closes the reading channel rc.
 func CloseReadChan(rc <-chan ChanData) error {
 	mtx.Lock()
 	defer mtx.Unlock()
