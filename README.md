@@ -20,9 +20,9 @@ still has buffered data at the point, these data will be lost. To prevent this, 
 2. The reading channel won't be closed since it blocks at reading the data from the `io.ReadWriter` interface. So the cleanest way to cleanup both reading and writing channels is using `CloseWriteChan()` method followed by a `Close()` method of the underlying io.ReadWriter interface if any.
 
 
-# Usage
+# Examples
 Socket:
-```
+```go
 conn, err := net.Dial("tcp", "www.example.com:80")
 if err != nil {
 	t.Fatal("failed to connect to www.example.com :", err)
@@ -44,7 +44,7 @@ for cd := range rc {
 conn.Close()
 ```
 Write-only channel:
-```
+```go
 f, err := os.OpenFile("./testfile", os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0660)
 if err != nil {
 	t.Fatal("failed to open ./testfile :", err)
@@ -64,7 +64,7 @@ log.Println(want)
 
 ```
 Read-only channel:
-```
+```go
 f, err := os.Open("./testfile")
 if err != nil {
 	t.Fatal("failed to open ./testfile :", err)
@@ -79,7 +79,7 @@ for cd := range rc {
 }
 ```
 Pipe:
-```
+```go
 rf, wf, err := os.Pipe()
 if err != nil {
 	t.Fatal("failed to create pipe:", err)
