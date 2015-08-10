@@ -48,7 +48,8 @@ type goChan struct {
 	rc       chan ChanData
 	wc       chan []byte
 	done     chan empty
-	rw       io.ReadWriter
+	r        io.Reader
+	w        io.Writer
 	readSize uint32
 }
 
@@ -72,9 +73,8 @@ func readChan(gc *goChan) {
 
 	for {
 		readsize := atomic.LoadUint32(&gc.readSize)
-		log.Printf("about to read %d bytes, %p\n", readsize, &gc.readSize)
 		b := make([]byte, readsize)
-		n, err := gc.rw.Read(b)
+		n, err := gc.r.Read(b)
 		b = b[0:n]
 		if err == io.EOF || err == io.ErrClosedPipe {
 			gc.rc <- ChanData{b, err}
@@ -93,7 +93,7 @@ func writeChan(gc *goChan) {
 			gc.done <- empty{} // work is done
 			break
 		}
-		_, err := gc.rw.Write(s)
+		_, err := gc.w.Write(s)
 		if err != nil {
 			log.Printf("write error %v\n", err)
 			gc.done <- empty{} // work is done
@@ -115,7 +115,7 @@ func writeChan(gc *goChan) {
 func NewChan(rw io.ReadWriter, rcBufsize uint, wcBufsize, readSize uint32) (<-chan ChanData, chan<- []byte) {
 	mtx.Lock()
 	defer mtx.Unlock()
-	var gc = goChan{make(chan ChanData, rcBufsize), make(chan []byte, wcBufsize), make(chan empty, 1), rw, readSize}
+	var gc = goChan{make(chan ChanData, rcBufsize), make(chan []byte, wcBufsize), make(chan empty, 1), rw, rw, readSize}
 	rcm[gc.rc] = &gc
 	wcm[gc.wc] = &gc
 	go readChan(&gc)
@@ -125,10 +125,10 @@ func NewChan(rw io.ReadWriter, rcBufsize uint, wcBufsize, readSize uint32) (<-ch
 
 // NewReadonlyChan creates a readonly channel typed by ChanData struct.
 // see comments on NewChan() method for details on parameters.
-func NewReadonlyChan(rw io.ReadWriter, rcBufsize uint, readSize uint32) <-chan ChanData {
+func NewReadonlyChan(r io.Reader, rcBufsize uint, readSize uint32) <-chan ChanData {
 	mtx.Lock()
 	defer mtx.Unlock()
-	var gc = goChan{rc: make(chan ChanData, rcBufsize), done: make(chan empty, 1), rw: rw, readSize: readSize}
+	var gc = goChan{rc: make(chan ChanData, rcBufsize), done: make(chan empty, 1), r: r, readSize: readSize}
 	rcm[gc.rc] = &gc
 	go readChan(&gc)
 	return gc.rc
@@ -136,10 +136,10 @@ func NewReadonlyChan(rw io.ReadWriter, rcBufsize uint, readSize uint32) <-chan C
 
 // NewWriteonlyChan creates a writeonly channel typed by []byte.
 // see comments on NewChan() method for details on parameters.
-func NewWriteonlyChan(rw io.ReadWriter, wcBufsize uint) chan<- []byte {
+func NewWriteonlyChan(w io.Writer, wcBufsize uint) chan<- []byte {
 	mtx.Lock()
 	defer mtx.Unlock()
-	var gc = goChan{wc: make(chan []byte, wcBufsize), done: make(chan empty, 1), rw: rw}
+	var gc = goChan{wc: make(chan []byte, wcBufsize), done: make(chan empty, 1), w: w}
 	go writeChan(&gc)
 	wcm[gc.wc] = &gc
 	return gc.wc
