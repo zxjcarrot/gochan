@@ -10,14 +10,13 @@ Data can be feed into the writing channel as `[]byte` directly
 without any wrapping.  
 
 # Cleanup
-When done with gochan, simply close the writing channel through `CloseWriteChan()`
-method or by closing  the `io.ReadWriter` interface.
+When done with gochan, simply close the writing channel through `CloseWriteChan()` method or by closing  the `io.ReadWriter` interface.
 Closing the writing channel won't affect the reading channel,
-but closing the `io.ReadWriter` interface causes both reading and writing channels to be closed.  
-Note:
+but closing the `io.ReadWriter` interface causes both reading and writing channels to be closed.    
+Note:  
 1. If you closed `io.ReadWriter` interface and the writing channel
-still has buffered data at the point, these data will be lost. To prevent this, use `CloseWriteChan()` method. `CloseWriteChan()` will block until the writing channel has finished writing buffered data or encountered errors. After then, you can safely close the `io.ReadWriter` interface.
-2. The reading channel won't be closed since it blocks at reading the data from the `io.ReadWriter` interface. So the cleanest way to cleanup both reading and writing channels is using `CloseWriteChan()` method followed by a `Close()` method of the underlying io.ReadWriter interface if any.
+still has buffered data at the point, these data will be lost. To prevent this, use `CloseWriteChan()` method. `CloseWriteChan()` will block until the writing channel has finished writing buffered data or encountered errors. After then, you can safely close the `io.ReadWriter` interface.  
+2. The reading channel won't be closed since it blocks at reading the data from the `io.ReadWriter` interface. So the cleanest way to cleanup both reading and writing channels is using `CloseWriteChan()` method followed by a `Close()` method of the underlying io.ReadWriter interface if any.  
 
 
 # Examples
@@ -70,7 +69,7 @@ if err != nil {
 	t.Fatal("failed to open ./testfile :", err)
 }
 // create a read-only channel with buffer size 50 and read size 4096
-rc := NewReadonlyChan(f, 50, 4096)
+rc := gochan.NewReadonlyChan(f, 50, 4096)
 
 defer f.Close()
 for cd := range rc {
@@ -104,7 +103,7 @@ for {
 		break loop
 	}
 }
-CloseReadChan(rc)
+gochan.CloseReadChan(rc)
 ```
 Pipe:
 ```go
