@@ -1,11 +1,14 @@
 package gochan
 
 import (
+	"io"
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"strconv"
 	"testing"
+	"time"
 )
 
 func TestNewChanNet(t *testing.T) {
@@ -115,7 +118,32 @@ func TestGochanPipe(t *testing.T) {
 	}
 }
 
-func pipe() {
+func TestGochanExec(t *testing.T) {
+	cmd := exec.Command("ls", "-R", "/")
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	rc := NewReadonlyChan(stdout, 0, 4096)
+	timeout := time.After(1 * time.Second)
+loop:
+	for {
+		select {
+		case cd, ok := <-rc:
+			if !ok || cd.Err == io.EOF {
+				break loop
+			}
+			log.Print(string(cd.Data))
+		case <-timeout:
+			t.Log("sleep took too long")
+			cmd.Process.Kill()
+			break loop
+		}
+	}
+	CloseReadChan(rc)
 }
 
 func TestGochanPipeError(t *testing.T) {

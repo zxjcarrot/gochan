@@ -78,6 +78,34 @@ for cd := range rc {
 	log.Println(s, cd.Err)
 }
 ```
+Timed command execution:
+```go
+cmd := exec.Command("ls", "-R", "/")
+stdout, err := cmd.StdoutPipe()
+if err != nil {
+	t.Fatal(err)
+}
+if err := cmd.Start(); err != nil {
+	t.Fatal(err)
+}
+rc := gochan.NewReadonlyChan(stdout, 0, 4096)
+timeout := time.After(1 * time.Second)
+loop:
+for {
+	select {
+	case cd, ok := <-rc:
+		if !ok || cd.Err == io.EOF {
+			break loop
+		}
+		log.Print(string(cd.Data))
+	case <-timeout:
+		t.Log("sleep took too long")
+		cmd.Process.Kill()
+		break loop
+	}
+}
+CloseReadChan(rc)
+```
 Pipe:
 ```go
 rf, wf, err := os.Pipe()
@@ -108,3 +136,5 @@ go func() {
 _ = <-done
 _ = <-done
 ```
+
+see `gochan_test.go` for complete code.
