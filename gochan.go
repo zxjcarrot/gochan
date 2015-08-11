@@ -33,7 +33,6 @@ import (
 	"log"
 	"os"
 	"sync"
-	"sync/atomic"
 )
 
 // ChanData contains data and error(if any) for transmission
