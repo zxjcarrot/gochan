@@ -29,6 +29,7 @@
 package gochan
 
 import (
+	"errors"
 	"io"
 	"log"
 	"os"
@@ -48,6 +49,7 @@ type goChan struct {
 	rc       chan ChanData
 	wc       chan []byte
 	done     chan empty
+	sizec    chan uint32 // channel to modify read channel's read size
 	r        io.Reader
 	w        io.Writer
 	readSize uint32
@@ -65,7 +67,6 @@ func readChan(gc *goChan) {
 		_ = recover()
 	}()
 	defer CloseReadChan(gc.rc)
-
 	for {
 		b := make([]byte, gc.readSize)
 		n, err := gc.r.Read(b)
@@ -73,6 +74,10 @@ func readChan(gc *goChan) {
 		gc.rc <- ChanData{b, err}
 		if err == io.EOF || err == io.ErrClosedPipe {
 			break
+		}
+
+		if gc.sizec != nil { // block till the new readsize comes in
+			gc.readSize = <-gc.sizec
 		}
 	}
 }
@@ -96,16 +101,57 @@ func writeChan(gc *goChan) {
 
 // NewChan creates two separate channels with buffer size rcBufsize and wcBufsize for reading/writing from/to rw.
 // Unbuffered channels will be created if buffer size 0 provided.
+// Especially a negative read channel buffer size will create a unbuffered the with readSize modification support,
+// e.g.:
+//		headerSize := 4
+//      // a negative -1 read buffer size will create a unbuffered channel which only reads data once after creation
+//      // or ModifyReadSize function being called
+//      rc, _ := gochan.NewChan(rw, -1, 10, headerSize)
+//      for {
+//			cd := <- rc
+//			if cd.Err != nil || len(cd.Data) != 4 {
+//	 			// handle errror...
+//			}
+//          dataSize := binary.BigEndian.Uint32(cd.Data)
+//			// now make it read a payload size of data
+//			gochan.ModifyReadSize(rc, dataSize)
+//          // read the payload
+//          cd = <- rc
+//          // make it read a header size of data again
+//          gochan.ModifyRedSize(rc, headerSize)
+//          // do what you want with the payload
+//		}
+//
 // The readSize parameter indicates the number of bytes a io.Reader.Read() operation will perform.
 // The reading channel returned is typed by ChanData struct, while the writing one is typed by []byte.
 // Every read operation on the channel will return a ChanData containing data and error if any,
 // the actual bytes read can be obtained from len(ChanData.Data).
 // Every write operation should provided a ChanData containing a slice of bytes and
 // the Err field in the ChanData struct will be ignored.
-func NewChan(rw io.ReadWriter, rcBufsize uint, wcBufsize uint, readSize uint32) (<-chan ChanData, chan<- []byte) {
+func NewChan(rw io.ReadWriter, rcBufsize int, wcBufsize uint, readSize uint32) (<-chan ChanData, chan<- []byte) {
 	mtx.Lock()
 	defer mtx.Unlock()
-	var gc = goChan{make(chan ChanData, rcBufsize), make(chan []byte, wcBufsize), make(chan empty, 1), rw, rw, readSize}
+	var gc goChan
+
+	if rcBufsize < 0 {
+		gc = goChan{
+			make(chan ChanData, 0),
+			make(chan []byte, wcBufsize),
+			make(chan empty, 1),
+			make(chan uint32, 1),
+			rw, rw,
+			readSize,
+		}
+	} else {
+		gc = goChan{
+			rc:   make(chan ChanData, rcBufsize),
+			wc:   make(chan []byte, wcBufsize),
+			done: make(chan empty, 1),
+			r:    rw, w: rw,
+			readSize: readSize,
+		}
+	}
+
 	rcm[gc.rc] = &gc
 	wcm[gc.wc] = &gc
 	go readChan(&gc)
@@ -115,10 +161,28 @@ func NewChan(rw io.ReadWriter, rcBufsize uint, wcBufsize uint, readSize uint32) 
 
 // NewReadonlyChan creates a readonly channel typed by ChanData struct.
 // see comments on NewChan() method for details on parameters.
-func NewReadonlyChan(r io.Reader, rcBufsize uint, readSize uint32) <-chan ChanData {
+func NewReadonlyChan(r io.Reader, rcBufsize int, readSize uint32) <-chan ChanData {
 	mtx.Lock()
 	defer mtx.Unlock()
-	var gc = goChan{rc: make(chan ChanData, rcBufsize), done: make(chan empty, 1), r: r, readSize: readSize}
+	var gc goChan
+
+	if rcBufsize < 0 {
+		gc = goChan{
+			rc:       make(chan ChanData, 0),
+			done:     make(chan empty, 1),
+			sizec:    make(chan uint32, 1),
+			r:        r,
+			readSize: readSize,
+		}
+	} else {
+		gc = goChan{
+			rc:       make(chan ChanData, rcBufsize),
+			done:     make(chan empty, 1),
+			r:        r,
+			readSize: readSize,
+		}
+	}
+
 	rcm[gc.rc] = &gc
 	go readChan(&gc)
 	return gc.rc
@@ -140,23 +204,40 @@ func NewWriteonlyChan(w io.Writer, wcBufsize uint) chan<- []byte {
 // buffered data or encountered errors.
 func CloseWriteChan(wc chan<- []byte) error {
 	mtx.Lock()
-	defer mtx.Unlock()
 	if gc, ok := wcm[wc]; ok {
 		delete(wcm, wc)
+		mtx.Unlock()
 		close(wc)
 		_ = <-gc.done // wait for works to be done
+		return nil
 	}
-
+	mtx.Unlock()
 	return nil
 }
 
 // CloseReadChan closes the reading channel rc.
 func CloseReadChan(rc <-chan ChanData) error {
 	mtx.Lock()
-	defer mtx.Unlock()
 	if gc, ok := rcm[rc]; ok {
 		delete(rcm, rc)
+		mtx.Unlock()
 		close(gc.rc)
+		return nil
 	}
+
+	mtx.Unlock()
 	return nil
+}
+
+// ModiyReadSize takes a read channel and a new read size.
+// it modify the read channel's read size of next read operation.
+// it return error if rc is closed or not a read channel from the gochan package.
+func ModiyReadSize(rc <-chan ChanData, newSize uint32) error {
+	mtx.Lock()
+	if gc, ok := rcm[rc]; ok {
+		mtx.Unlock()
+		gc.sizec <- newSize
+		return nil
+	}
+	return errors.New("read channel does not exist")
 }

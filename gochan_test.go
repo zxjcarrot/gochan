@@ -1,6 +1,7 @@
 package gochan
 
 import (
+	"encoding/binary"
 	"io"
 	"log"
 	"net"
@@ -163,4 +164,68 @@ func TestGochanPipeError(t *testing.T) {
 	}()
 
 	_ = <-done
+}
+
+func TestModifyReadSize(t *testing.T) {
+	rf, wf, err := os.Pipe()
+	if err != nil {
+		t.Fatal("failed to create pipe:", err)
+	}
+	var wantData = []string{
+		"monkeys",
+		"are",
+		"typing",
+		"randomly",
+	}
+
+	var wantDataLen = []uint32{
+		uint32(len(wantData[0])),
+		uint32(len(wantData[1])),
+		uint32(len(wantData[2])),
+		uint32(len(wantData[3])),
+	}
+
+	for i := 0; i < len(wantData); i = i + 1 {
+		b := make([]byte, 4)
+		binary.BigEndian.PutUint32(b, wantDataLen[i])
+		wf.Write(b)
+		wf.Write([]byte(wantData[i]))
+	}
+	wf.Close()
+
+	headerSize := 4
+	rc := NewReadonlyChan(rf, -1, uint32(headerSize))
+	i := 0
+	for {
+		//after reading the header, rc will waits for ModiyReadSize to tell it the next read size
+		cd := <-rc
+		if cd.Err == io.EOF {
+			break
+		} else if cd.Err != nil || len(cd.Data) != headerSize {
+			t.Fatal("failed to read header size", cd)
+		}
+
+		payloadSize := binary.BigEndian.Uint32(cd.Data)
+		// tell rc the next read size should be payloadSize
+		if err := ModiyReadSize(rc, payloadSize); err != nil {
+			t.Fatal("failed to modify read size", err)
+		}
+		// rc resumes
+		cd = <-rc
+		if cd.Err != nil {
+			t.Fatal("failed to read data", cd)
+		}
+		log.Printf("payload size: %d, payload: %s\n", payloadSize, string(cd.Data))
+
+		if wantDataLen[i] != payloadSize || string(cd.Data) != wantData[i] {
+			t.Fatalf("want data len: %d, want data: %s, got data len: %d, data: %s",
+				wantDataLen[i], wantData[i], payloadSize, string(cd.Data))
+		}
+
+		// now tell rc to read headerSize bytes of data
+		if err := ModiyReadSize(rc, uint32(headerSize)); err != nil {
+			t.Fatal("failed to modify read size", err)
+		}
+		i = i + 1
+	}
 }
