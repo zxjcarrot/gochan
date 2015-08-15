@@ -136,4 +136,61 @@ _ = <-done
 _ = <-done
 ```
 
+Modify read size after the creation of channels:
+```go
+rf, wf, err := os.Pipe()
+if err != nil {
+	t.Fatal("failed to create pipe:", err)
+}
+var wantData = []string{
+	"monkeys",
+	"are",
+	"typing",
+	"randomly",
+}
+
+var wantDataLen = []uint32{
+	uint32(len(wantData[0])),
+	uint32(len(wantData[1])),
+	uint32(len(wantData[2])),
+	uint32(len(wantData[3])),
+}
+
+for i := 0; i < len(wantData); i = i + 1 {
+	b := make([]byte, 4)
+	binary.BigEndian.PutUint32(b, wantDataLen[i])
+	wf.Write(b)
+	wf.Write([]byte(wantData[i]))
+}
+wf.Close()
+
+headerSize := 4
+// -1 read buffer size creates a readSize-modifiable channel
+rc := gochan.NewReadonlyChan(rf, -1, uint32(headerSize))
+for {
+	//after reading the header, rc will waits for ModiyReadSize to tell it the next read size
+	cd := <-rc
+	if cd.Err == io.EOF {
+		break
+	} else if cd.Err != nil || len(cd.Data) != headerSize {
+		t.Fatal("failed to read header size", cd)
+	}
+
+	payloadSize := binary.BigEndian.Uint32(cd.Data)
+	// tell rc the next read size should be payloadSize
+	if err := gochan.ModiyReadSize(rc, payloadSize); err != nil {
+		t.Fatal("failed to modify read size", err)
+	}
+	// read payload
+	cd = <-rc
+	if cd.Err != nil {
+		t.Fatal("failed to read data", cd)
+	}
+	log.Printf("payload size: %d, payload: %s\n", payloadSize, string(cd.Data))
+	// now tell rc to read headerSize bytes of data again
+	if err := gochan.ModiyReadSize(rc, uint32(headerSize)); err != nil {
+		t.Fatal("failed to modify read size", err)
+	}
+}
+```
 see `gochan_test.go` for complete code.

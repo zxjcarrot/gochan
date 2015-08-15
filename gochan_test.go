@@ -210,7 +210,7 @@ func TestModifyReadSize(t *testing.T) {
 		if err := ModiyReadSize(rc, payloadSize); err != nil {
 			t.Fatal("failed to modify read size", err)
 		}
-		// rc resumes
+		// read payload
 		cd = <-rc
 		if cd.Err != nil {
 			t.Fatal("failed to read data", cd)
@@ -222,10 +222,16 @@ func TestModifyReadSize(t *testing.T) {
 				wantDataLen[i], wantData[i], payloadSize, string(cd.Data))
 		}
 
-		// now tell rc to read headerSize bytes of data
+		// now tell rc to read headerSize bytes of data again
 		if err := ModiyReadSize(rc, uint32(headerSize)); err != nil {
 			t.Fatal("failed to modify read size", err)
 		}
 		i = i + 1
 	}
+
+	err = ModiyReadSize(make(chan ChanData, 0), 1)
+	if err == nil {
+		t.Fatal("failed")
+	}
+	log.Print(err)
 }
