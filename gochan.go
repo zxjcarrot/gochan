@@ -101,7 +101,7 @@ func writeChan(gc *goChan) {
 
 // NewChan creates two separate channels with buffer size rcBufsize and wcBufsize for reading/writing from/to rw.
 // Unbuffered channels will be created if buffer size 0 provided.
-// Especially a negative read channel buffer size will create a unbuffered the with readSize modification support,
+// Especially a negative read channel buffer size will create a unbuffered channel with readSize modification support,
 // e.g.:
 //		headerSize := 4
 //      // a negative -1 read buffer size will create a unbuffered channel which only reads data once after creation
