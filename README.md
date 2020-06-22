@@ -6,7 +6,7 @@ for reading and writing.
 # Data
 Data read from the reading channel is  wrapped in the `ChanData` struct
 which also contains a Err field if there is any error during reading.
-Data can be feed into the writing channel as `[]byte` directly
+Data can be fed into the writing channel as `[]byte` directly
 without any wrapping.  
 
 # Cleanup
